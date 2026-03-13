@@ -65,6 +65,10 @@ your-project/
 │         (Web.BlazorServer)                  │
 │     What the user sees and interacts with   │
 ├─────────────────────────────────────────────┤
+│             INFRASTRUCTURE                  │
+│    (Database.MsSql + Integration.Sap)       │
+│       The technical implementations         │
+├─────────────────────────────────────────────┤
 │              APPLICATION                    │
 │         (Application.UseCases)              │
 │    Orchestrates "what needs to happen"      │
@@ -72,10 +76,6 @@ your-project/
 │                 DOMAIN                      │
 │           (Domain.Entities)                 │
 │      The core business rules and data       │
-├─────────────────────────────────────────────┤
-│             INFRASTRUCTURE                  │
-│    (Database.MsSql + Integration.Sap)       │
-│       The technical implementations         │
 └─────────────────────────────────────────────┘
 ```
 
