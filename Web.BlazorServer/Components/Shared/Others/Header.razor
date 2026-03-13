@@ -1,0 +1,24 @@
+﻿@inherits BaseComponent
+<RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0" class="rz-px-4 rz-pt-1">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px">
+        <RadzenImage Path="/assets/direc_2025_logo.png" style="width: 100px;" Click="@NavigateToHome" />
+    </RadzenStack>
+
+    <RadzenStack Visible=@WithAccount Orientation="Orientation.Horizontal" JustifyContent=JustifyContent.End AlignItems="AlignItems.Center" Gap="8px">
+        <RadzenProfileMenu Visible="@AuthService.IsAuthenticated()" ShowIcon=false>
+            <Template>
+                <RadzenGravatar Email="@AuthService.GetUserEmail()"/>
+            </Template>
+            <ChildContent>
+                <RadzenStack Gap="8px" class="rz-p-2">
+                    <RadzenStack class="rz-p-2" Gap="2px">
+                        <RadzenText Text="@AuthService.GetUserName()" class="rz-m-0" />
+                        <RadzenText TextStyle="TextStyle.Caption" Text="@AuthService.GetUserRoleName()" class="rz-m-0" />
+                    </RadzenStack>
+                    <RadzenButton Text="Logout" Icon="power_settings_new" ButtonStyle=ButtonStyle.Base Variant="Variant.Text" Click="@Logout" class="rz-text-capitalize" />
+                </RadzenStack>
+            </ChildContent>
+        </RadzenProfileMenu>
+    </RadzenStack>
+</RadzenStack>
+

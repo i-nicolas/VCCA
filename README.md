@@ -48,4 +48,16 @@ This chain always stays intact. You'll see it everywhere in this documentation.
 
 ---
 
+## 📍 To Do
+
+> **There is always room for improvement.**
+
+This architecture is still a work in progress. There are [Architectural Debts](.docs/99-architectural-debts.md) that need to be reviewed and addressed.
+
+Some key things we are planning to add:
+- **Web API support** – so we can expose backend functionality through HTTP endpoints.
+- **Headless setup** – allowing JavaScript frontends (like React or Angular) to connect to a C# API.
+
+---
+
 *Last updated: 2026 — maintained by Ian Nicolas Antonio.*
