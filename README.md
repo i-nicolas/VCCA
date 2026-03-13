@@ -60,4 +60,4 @@ Some key things we are planning to add:
 
 ---
 
-*Last updated: 2026 — maintained by Ian Nicolas Antonio.*
+*Last updated: 2026 — maintained by Ian Nicolas Antonio. Engineered with Charles Maverick Herrera and Arnel De Asas.*
