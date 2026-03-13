@@ -6,34 +6,54 @@
 
 ## How the UI is Organized
 
-All UI code lives in `src/presentation/Web.BlazorServer/`.
+All UI code lives in `Web.BlazorServer/`.
 
 ```
 Web.BlazorServer/
 ├── Components/
 │   ├── Base/
-│   │   └── BaseComponent.razor         ← Every component inherits this
+│   │   ├── BaseComponent.razor         ← Every component inherits this
+│   │   └── BaseForm.razor              ← CVU pages inherit this (extends BaseComponent)
 │   ├── Layout/
 │   │   └── ProtectedLayout.razor       ← Wrap authenticated pages with this
 │   ├── Pages/
 │   │   └── [Feature]/                  ← One folder per feature
-│   │       ├── OrderPage.razor         ← Markup only
-│   │       ├── OrderPage.razor.cs      ← All logic goes here
-│   │       ├── OrderCVUPage.razor      ← Create/View/Update page
-│   │       └── OrderCVUPage.razor.cs
+│   │       ├── OrderPage.razor         ← List/read-only page markup
+│   │       ├── OrderPage.razor.cs      ← All logic (inherits BaseComponent)
+│   │       ├── OrderCVU.razor.cs       ← Create/View/Update form (inherits BaseForm<TItem>)
+│   │       └── OrderCVU.razor
+│   ├── Security/                       ← Auth controller, services, policy providers
 │   └── Shared/
 │       ├── Abstraction/
-│       │   └── AppDataGrid.razor       ← Reusable UI components
+│       │   └── AppDataGrid.razor       ← Reusable data grid wrapper
+│       ├── Skeletons/                  ← Loading skeleton components
+│       ├── Others/                     ← Header, Footer, NavigationMenu
 │       └── CascadingValues/
+├── Defaults/
+│   ├── AppActions.cs                   ← Enum of all named UI actions
+│   └── AppActionOptionPresets.cs       ← Preset factory for AppActionFactory options
+├── Extensions/
 ├── Handlers/
-│   └── Implementations/[Feature]/      ← Web Handlers (MediatR dispatchers)
-├── Repositories/
-│   └── Implementations/[Feature]/      ← Web Repositories (injected into pages)
+│   ├── Repositories/[Feature]/         ← Handler interfaces (IXxxHandler) injected into pages
+│   └── Implementations/[Feature]/      ← Thin MediatR dispatchers (call IMediator.Send())
+├── Helpers/
+│   └── AuthorizationHelper.cs          ← Permission-check helpers
+├── Registers/
+│   └── BlazorServerDI.cs               ← DI registration for web-layer services
+├── Services/
+│   ├── Repositories/                   ← IAlertService, IBusyService, IToastService, etc.
+│   └── Implementation/                 ← Concrete service implementations
 ├── ViewModels/
-│   └── [Feature]VM.cs                  ← UI display models
+│   ├── Administration/Role/            ← RoleVM, RolePermissionVM
+│   ├── Administration/User/            ← UserVM, UserDataGridVM, etc.
+│   ├── Commons/                        ← EntityVM, AuditableVM
+│   ├── Enums/                          ← PageActionTypeEnum
+│   ├── Others/                         ← AccountVM, PersonNameVM, etc.
+│   ├── Security/                       ← AuthenticationVM
+│   └── System/                         ← ModuleVM, NavigationRouteVM, etc.
 └── wwwroot/
     ├── assets/                          ← Images and static files
-    └── js/                              ← Page-specific JavaScript
+    └── js/custom-scripts/               ← login.js, logout.js
 ```
 
 ---
@@ -50,7 +70,39 @@ Web.BlazorServer/
 // (no @inherits line)
 ```
 
-`BaseComponent` provides shared lifecycle helpers, common services, and utilities so you don't have to set them up in every component. Never duplicate what it already provides.
+`BaseComponent` provides shared lifecycle helpers, common services, and utilities so you don't have to set them up in every component. This includes `AppActionFactory`, `IBusyService`, `IToastService`, `IAlertService`, `NavigationManager`, `DialogService`, `IJSRuntime`, `ICurrentUserService`, `AuthorizationHelper`, and `AppAuthenticationService`. Never re-inject any of these — they are already available.
+
+---
+
+## BaseForm\<TItem\> — CVU Page Base
+
+**Create/View/Update (CVU) pages inherit `BaseForm<TItem>` instead of `BaseComponent`.**
+
+```
+BaseComponent
+  └── BaseForm<TItem>   ← CVU pages inherit this
+```
+
+`BaseForm<TItem>` manages form data binding (`FormData`, `FormDataClone`), `RadzenTemplateForm<TItem>` integration, unsaved-change tracking, and the submit/cancel lifecycle. It requires implementing three abstract methods: `InitializeEditing()`, `CancelEditing()`, and `HandleSubmit()`.
+
+> Full reference: see `.agent-md/ui_abstractions.md`
+
+---
+
+## Handlers — The Injection Point
+
+Components inject `IXxxHandler` interfaces from `Handlers/Repositories/[Feature]/` — **never** `IMediator`, `AppDbContext`, or infrastructure repositories directly.
+
+```csharp
+// ✅ Correct — inject the Handler interface
+[Inject] private IOrderHandler OrderHandler { get; set; }
+
+// ❌ Wrong — never inject these into components
+[Inject] private IMediator Mediator { get; set; }
+[Inject] private AppDbContext DbContext { get; set; }
+```
+
+`Handlers/Implementations/[Feature]/` contains the thin dispatchers that implement `IXxxHandler` by calling `IMediator.Send()`.
 
 ---
 
@@ -89,21 +141,18 @@ else
 // OrderPage.razor.cs
 public partial class OrderPage : BaseComponent
 {
-    // ✅ Inject the Web Repository, not IMediator or DbContext
-    [Inject] private IOrderRepository OrderRepository { get; set; }
+    // ✅ Inject the Handler interface, not IMediator or DbContext
+    [Inject] private IOrderHandler OrderHandler { get; set; }
 
     private List<OrderVM> _orders = new();
-    private bool _isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        _orders = await OrderRepository.GetAllOrdersAsync();
-        _isLoading = false;
-    }
+        var action = await AppActionFactory.RunAsync(
+            async () => await OrderHandler.GetAllOrdersAsync(),
+            AppActionOptionPresets.Loading(AppActions.GetAllOrders.GetDescription()));
 
-    private async Task HandleSaveAsync()
-    {
-        await OrderRepository.SaveOrderAsync(_selectedOrder);
+        action.OnSuccess(result => { _orders = result?.Adapt<List<OrderVM>>() ?? []; });
     }
 }
 ```
@@ -271,37 +320,39 @@ We use **Radzen's `RadzenTemplateForm`** for forms — not Blazor's built-in `Ed
 </RadzenTemplateForm>
 ```
 
-Validation logic still lives in the `.razor.cs` file — Radzen's form simply calls `HandleSaveAsync` on submit:
+CVU pages inherit `BaseForm<TItem>` and implement three abstract methods:
 
 ```csharp
-// OrderCVUPage.razor.cs
-public partial class OrderCVUPage : BaseComponent
+// OrderCVU.razor.cs
+public partial class OrderCVU : BaseForm<OrderVM>
 {
-    [Inject] private IOrderRepository OrderRepository { get; set; }
+    [Inject] private IOrderHandler OrderHandler { get; set; }
 
-    private OrderVM _order = new();
-    private List<StatusOption> _statusOptions = new();
-
-    protected override async Task OnInitializedAsync()
+    protected override async Task InitializeEditing()
     {
-        _statusOptions = await OrderRepository.GetStatusOptionsAsync();
+        // Populate FormData when opening an existing record
+        var action = await AppActionFactory.RunAsync(
+            async () => await OrderHandler.GetOrderAsync(Id),
+            AppActionOptionPresets.Loading(AppActions.GetOrder.GetDescription()));
+
+        action.OnSuccess(dto => dto?.Adapt(FormData));
+        AdaptToClone(); // snapshot for cancel/restore
     }
 
-    private async Task HandleSaveAsync()
+    protected override async Task HandleSubmit()
     {
-        // Validate first — validation logic lives here, not in markup
-        if (string.IsNullOrWhiteSpace(_order.CustomerName))
-        {
-            // show notification or set validation message
-            return;
-        }
+        var action = await AppActionFactory.RunAsync(
+            async () => await OrderHandler.SaveOrderAsync(FormData),
+            AppActionOptionPresets.Confirmed(AppActions.SaveOrder.GetDescription()));
 
-        await OrderRepository.SaveOrderAsync(_order);
+        action.OnSuccess(_ => NavManager.NavigateTo("/orders"));
     }
 
-    private void HandleCancelAsync()
+    protected override Task CancelEditing()
     {
-        NavigationManager.NavigateTo("/orders");
+        AdaptToForm(); // restore snapshot
+        NavManager.NavigateTo("/orders");
+        return Task.CompletedTask;
     }
 }
 ```
@@ -310,36 +361,33 @@ public partial class OrderCVUPage : BaseComponent
 
 ### Radzen Notifications (Toasts)
 
-Use `NotificationService` for user-facing feedback:
+Use `IToastService` for user-facing feedback — it is already injected in `BaseComponent` as `ToastService`. Do not inject `NotificationService` directly.
 
 ```csharp
-// In .razor.cs — inject the service
-[Inject] private NotificationService NotificationService { get; set; }
-
+// In .razor.cs — ToastService is already available via BaseComponent
 private async Task HandleSaveAsync()
 {
-    await OrderRepository.SaveOrderAsync(_order);
-
-    NotificationService.Notify(new NotificationMessage
-    {
-        Severity = NotificationSeverity.Success,
-        Summary = "Saved",
-        Detail = "Order saved successfully.",
-        Duration = 3000
-    });
+    var action = await AppActionFactory.RunAsync(
+        async () => await OrderHandler.SaveOrderAsync(FormData),
+        AppActionOptionPresets.Confirmed(AppActions.SaveOrder.GetDescription()));
+    // AppActionFactory shows success/failure toasts automatically via AppActionOptions
 }
+
+// Manual toast (when not using AppActionFactory):
+ToastService.Success("Order saved successfully.");
+ToastService.Error("Something went wrong.");
 ```
 
-Add `<RadzenNotification />` once in your layout to enable it globally.
+`AppActionFactory` handles toasts automatically when `ShowToastOnSuccess` / `ShowToastOnFailure` are enabled in the options (the default for `Confirmed` and `Silent` presets).
 
 ---
 
 ### Radzen Dialogs
 
-```csharp
-// In .razor.cs — inject the service
-[Inject] private DialogService DialogService { get; set; }
+`DialogService` is already injected in `BaseComponent` — do not re-inject it.
 
+```csharp
+// In .razor.cs — DialogService is available via BaseComponent
 private async Task HandleDeleteAsync(Guid orderId)
 {
     var confirmed = await DialogService.Confirm(

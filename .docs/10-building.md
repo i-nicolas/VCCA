@@ -20,30 +20,26 @@ These **must** be set before running the app. Never put them in `appsettings.jso
 
 | Variable | Description | Example |
 |---|---|---|
-| `ConnectionStrings__DefaultConnection` | SQL Server connection string | `Server=localhost;Database=LSMS;Trusted_Connection=True;` |
-| `Jwt__SigningKey` | Secret key for signing JWTs | `a-long-random-secret-string` |
+| `ConnectionStrings__DefaultConnection` | SQL Server connection string | `Server=localhost;Database=YourDatabase;Trusted_Connection=True;` |
 
 ### Setting Environment Variables
 
 **Windows (Command Prompt):**
 ```cmd
-set ConnectionStrings__DefaultConnection="Server=...;Database=LSMS;..."
-set Jwt__SigningKey="your-secret-key"
+set ConnectionStrings__DefaultConnection="Server=localhost;Database=YourDatabase;Trusted_Connection=True;"
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$env:ConnectionStrings__DefaultConnection = "Server=...;Database=LSMS;..."
-$env:Jwt__SigningKey = "your-secret-key"
+$env:ConnectionStrings__DefaultConnection = "Server=localhost;Database=YourDatabase;Trusted_Connection=True;"
 ```
 
 **macOS / Linux:**
 ```bash
-export ConnectionStrings__DefaultConnection="Server=...;Database=LSMS;..."
-export Jwt__SigningKey="your-secret-key"
+export ConnectionStrings__DefaultConnection="Server=localhost;Database=YourDatabase;Trusted_Connection=True;"
 ```
 
-**Using a `.env` file (not committed to git):**  
+**Using a `.env` file (not committed to git):**
 Create a `.env` file in the solution root and load it with your preferred tool, or set the variables in your IDE's launch profile settings (`launchSettings.json` — also not committed).
 
 ---
@@ -61,7 +57,7 @@ dotnet build
 ## Run
 
 ```bash
-dotnet run --project src/presentation/Web.BlazorServer
+dotnet run --project Web.BlazorServer
 ```
 
 The app will be available at `https://localhost:5001` (or the port shown in terminal output).
@@ -76,16 +72,16 @@ Always run migration commands from the **solution root**.
 
 ```bash
 dotnet ef database update \
-  --project src/infrastructure/database/Database.MsSql \
-  --startup-project src/presentation/Web.BlazorServer
+  --project Database.MsSql \
+  --startup-project Web.BlazorServer
 ```
 
 ### Add a new migration
 
 ```bash
 dotnet ef migrations add YourMigrationName \
-  --project src/infrastructure/database/Database.MsSql \
-  --startup-project src/presentation/Web.BlazorServer
+  --project Database.MsSql \
+  --startup-project Web.BlazorServer
 ```
 
 > 💡 **Name your migrations descriptively** — `AddOrderStatusColumn` is better than `Migration1`.
@@ -104,18 +100,15 @@ After adding a migration, always open the generated file in `Database.MsSql/Migr
 {
   "Logging": {
     "LogLevel": {
-      "Default": "Information"
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
     }
   },
-  "Jwt": {
-    "Issuer": "your-project",
-    "Audience": "lsms-users",
-    "ExpiryMinutes": 480
-  }
+  "AllowedHosts": "*"
 }
 ```
 
-Never put secrets here.
+Never put secrets here. Connection strings and other sensitive values go in environment variables or a local `.env` file (not committed).
 
 ---
 
@@ -123,10 +116,11 @@ Never put secrets here.
 
 | Problem | Check |
 |---|---|
-| App won't start | Are environment variables set? |
+| App won't start | Is `ConnectionStrings__DefaultConnection` set? |
 | Database connection error | Is SQL Server running? Is the connection string correct? |
-| Migration errors | Are you running from solution root? Does the database exist? |
-| JWT auth failing | Is `Jwt__SigningKey` set and matching on all instances? |
+| Migration errors | Are you running from the solution root? Does the database exist? |
+| Login fails silently | Is the DB seeded with at least one user and role? Check `AppDbSeeding.cs`. |
+| Cookie auth not working | Is `CookieAuthenticationDefaults.AuthenticationScheme` registered in `Program.cs`? |
 
 ---
 
